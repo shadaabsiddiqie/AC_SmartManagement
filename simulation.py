@@ -1,5 +1,8 @@
 import Queue,time
 import random
+import numpy as np
+import math 
+import csv
 class Cell:
 	def __init__(self,row,col,grid,initial_temp=23,final_temp=14,hasac=False,heat_capacity=0.7):
 		self.row = row
@@ -10,7 +13,7 @@ class Cell:
 		self.cutoff = 1
 		self.power = 0
 		self.eff = 0
-		self.clock_value = 0.01
+		self.clock_value = 0.1
 		self.heat_capacity = 700
 		self.grid = grid
 
@@ -36,23 +39,23 @@ class Cell:
 			count += 1
 		temp = float(temp)/float(count)
 		
-		if temp - self.cutoff_temp <= self.cutoff :
-			if self.hasac :
-				#print temp , self.cutoff_temp
-				print "AC SWITCHED OFF"
-				self.hasac = False 
+		# if temp - self.cutoff_temp <= self.cutoff and self.temp <= 0 :
+		# 	if self.hasac :
+		# 		#print temp , self.cutoff_temp
+		# 		# print "AC SWITCHED OFF " +str(self.row) +" "+str(self.col)
+		# 		self.hasac = False 
 
 		if temp - self.cutoff_temp >= self.cutoff :
 			if not self.hasac:
 				#print temp , self.cutoff_temp
-				print "AC SWITCHED ON"
+				# print "AC SWITCHED ON "+str(self.row) +" "+str(self.col)
 				self.hasac = True
 
 		if self.hasac :
 			energy = self.power * self.eff * self.clock_value
 			temp_diff = energy / self.heat_capacity
-			self.temp -= temp_diff
-
+			if(self.temp >0):
+				self.temp -= temp_diff
 class GRID:
 	def __init__(self,rows,cols,default_temp=23):
 		self.grid = [[Cell(i,j,self,default_temp) for j in range(cols)] for i in range(rows)]
@@ -68,8 +71,8 @@ class GRID:
 		self.vis = {}
 		self.region_size = {}
 		self.region_list = {}
-		self.regionmaxsize = 30
-		self.regionminsize = 10
+		self.regionminsize = 18
+		self.regionmaxsize = 20
 		self.total_power = 0
 
 	def add_ac(self,row,col,cutoff_temp=15,power=5507,eff=3.5):
@@ -91,6 +94,7 @@ class GRID:
 			for j in range(self.cols):
 				if self.region_size[self.regions[i][j]] == 1 :
 					self.region_size[self.regions[i][j]] -= 1
+					# if j+1 < self.cols:
 					self.region_size[self.regions[i][j+1]] += 1
 					self.regions[i][j] = self.regions[i][j+1]
 					self.region_count -= 1
@@ -100,6 +104,7 @@ class GRID:
 		
 		for i in range(self.rows):
 			for j in range(self.cols):
+				# if (self.regions[i][j] in range(1,self.region_count+1) ):
 				self.region_list[self.regions[i][j]].append((i,j))
 		
 		self.place_acs()
@@ -182,14 +187,14 @@ class GRID:
 			total_temp += matrix[row-1][col]
 			total += 1
 			neighbours.append((row-1,col))
-		if row+1<self.rows:
-			total_temp += matrix[row+1][col]
-			total += 1
-			neighbours.append((row+1,col))
 		if col-1>=0:
 			total_temp += matrix[row][col-1]
 			total += 1
 			neighbours.append((row,col-1))
+		if row+1<self.rows:
+			total_temp += matrix[row+1][col]
+			total += 1
+			neighbours.append((row+1,col))
 		if col+1<self.cols:
 			total_temp += matrix[row][col+1]
 			total += 1
@@ -234,6 +239,9 @@ class GRID:
 	def get_temp_grid(self):
 		return self.normalize([[self.grid[i][j].temp for j in range(self.cols)] for i in range(self.rows)])
 	
+	def get_final_temp_grid(self):
+		return self.normalize([[self.grid[i][j].final_temp for j in range(self.cols)] for i in range(self.rows)])
+	
 	
 	def get_temp_string(self):
 		s = ""
@@ -243,6 +251,27 @@ class GRID:
 			s = s + "\n\n"
 		return s
 
+	def calculate_satisfaction(self,t1,t2):
+		a1 = (t1-t2)*(t1-t2)
+		b1 = math.exp(-a1/30)
+		return b1
+
+	def get_satisfaction_string(self):
+		s = ""
+		for i in range(self.rows):
+			for j in range(self.cols):
+				a1 = self.calculate_satisfaction(self.grid[i][j].final_temp,self.grid[i][j].temp)
+				s = s + str(format(a1, '.2f')) + "  "
+			s = s + "\n\n"
+		return s
+	def get_total_satisfaction(self):
+		s = 0
+		for i in range(self.rows):
+			for j in range(self.cols):
+				a1 = self.calculate_satisfaction(self.grid[i][j].final_temp,self.grid[i][j].temp)
+				s = s + a1
+		return (s*1.0)/(self.rows*self.cols)
+	
 	def get_working_acs(self):
 		total = 0
 		for cell in self.ac_cells:
@@ -268,7 +297,7 @@ class GRID:
 					
 				for neighbour in neighbours:
 						queue.put(neighbour)
-
+		matrix = matrix + 0.01*np.random.rand(self.rows,self.cols)
 		return matrix
 
 
@@ -289,28 +318,45 @@ label3_text = StringVar()
 label4_text = StringVar()
 label5_text = StringVar()
 label6_text = StringVar()
+label7_text = StringVar()
+label8_text = StringVar()
+
 grid = ''
+
+fn = 'CPvsTvrZ0Base.csv'
+# row = ['time','Power','Cummulative Power','saticfaction']
+# row = ['saticfaction']
+# with open(fn, 'a') as csvFile:
+#     writer = csv.writer(csvFile)
+#     writer.writerow(row)
+# csvFile.close()
+
 def run():
-	with open("input.txt") as f :
-		for i,line in enumerate(f) :
-			if i == 0 :
-				a , b = line.split()
-				grid = GRID(int(a),int(b))
-			else :
-				a , b , c = line.split()
-				grid.set_final_temp(int(a),int(b),float(c))
-	'''
+	
+	# with open("input.txt") as f :
+	# 	for i,line in enumerate(f) :
+	# 		if i == 0 :
+	# 			a , b = line.split()
+	# 			grid = GRID(int(a),int(b))
+	# 		else :
+	# 			a , b , c = line.split()
+	# 			grid.set_final_temp(int(a),int(b),float(c))
+	
+	input = np.loadtxt("inputPrint.txt", dtype='i', delimiter=',')
+	# input = np.random.randint(15,19, size=(10, 10))
+
+	grid = GRID(input.shape[0],input.shape[1])
+	for i in range(input.shape[0]):
+		for j in range(input.shape[1]):
+			grid.set_final_temp(int(i),int(j),float(input[i][j]))
+
 	for i in range(grid.rows) :
 		for j in range(grid.cols) :
 			print '{} '.format(grid.grid[i][j].final_temp),
 		print "\n"
-	'''
-
-
-
+	
 	grid.start_distribution()
 
-	'''
 	print "Optimum Number Of Acs : " , len((grid.ac_cells))
 	print "Optimum Positions For Acs : "
 	for ac in grid.ac_cells :
@@ -321,7 +367,7 @@ def run():
 		for j in range(grid.cols) :
 			print '{} '.format(grid.regions[i][j]),
 		print "\n"
-	'''
+	
 
 	fig = plt.figure()
 	ax = fig.add_subplot(111)
@@ -329,23 +375,39 @@ def run():
 	canvas = FigureCanvasTkAgg(fig, master=left)
 	canvas.show()
 	canvas.get_tk_widget().pack()
-	
+	TS = 0
 	for i in range(3600):
 		#time.sleep(0.1)
 		grid.start_cycle()
 		#grid.print_grid()
-		im = ax.imshow(np.array(grid.get_temp_grid()), cmap='plasma', interpolation='nearest')
-		P = grid.get_power_consumption()
-		print P
+
+		im = ax.imshow(np.array(grid.get_temp_grid()) , cmap='plasma', interpolation='nearest')
+		P = grid.get_power_consumption() 
+		# print P
 		grid.total_power += P
-		
+	
+		S = grid.get_total_satisfaction()
+		TS = TS + S
+		print S
+
+		row =  [S]
+		with open(fn, 'a') as csvFile:
+			writer = csv.writer(csvFile)
+			writer.writerow(row)
+		csvFile.close()
+
 		label3_text.set("Power Consumption : \n"+ str(P))
 		label4_text.set("\nTemperature Grid : \n" + grid.get_temp_string())
-		#label5_text.set("\nWorking ACS : \n" + str(grid.get_working_acs()))
-		#label6_text.set("\nTotalPower:\n" + str(grid.total_power))
-		canvas.draw()
-		
-	#print grid.region_count*5507*3.5
+		label5_text.set("\nWorking ACS : \n" + str(grid.get_working_acs()))
+		label6_text.set("\nTotalPower:\n" + str(grid.total_power))
+		label7_text.set("\nsatisfaction:\n" + grid.get_satisfaction_string())
+		label8_text.set("\nTotal satisfaction:\n" + str(grid.get_total_satisfaction()))
+		# canvas.draw()
+	print ("AC ALL ARE ON",grid.region_count*5507*3.5*3600)#416329200
+	print ("AC Total power consumtion",grid.total_power)
+	print ("No Of AC",grid.region_count)
+	print ("Percent of power gain",(((grid.region_count*5507*3.5*3600)-grid.total_power)/(grid.region_count*5507*3.5*3600))*100)
+	print (TS*1.0/3600)
 
 label1 = Label(left, text="Room Temperature Simulation")
 label2 = Button(left, text="Run Simulation",command=run)
@@ -353,6 +415,8 @@ label3 = Label(right, textvariable=label3_text)
 label4 = Label(right,textvariable=label4_text)
 label5 = Label(right,textvariable=label5_text)
 label6 = Label(right,textvariable=label6_text)
+label7 = Label(right,textvariable=label7_text)
+label8 = Label(right,textvariable=label8_text)
 left.pack(side="left", expand=True, fill="both")
 right.pack(side="right", expand=True, fill="both")
 label1.pack()
@@ -361,6 +425,9 @@ label3.pack()
 label4.pack()
 label5.pack()
 label6.pack()
+label7.pack()
+label8.pack()
 root.mainloop()
-
-run()
+while(1):
+	run()	
+	break
